@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAppDispatch } from '../../../../store/hooks'
-import { login as loginAction } from '../../../../store/slices/authSlice'
+import { useAppDispatch } from '@/store/hooks'
+import { login as loginAction } from '@/store/slices/authSlice'
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google'
-import apiClient from '../../../../services/apiClient'
+import apiClient from '@/services/apiClient'
 import { useTheme } from 'next-themes'
 import toast from 'react-hot-toast'
+import { setAddressList } from '@/store/slices/addressSlice'
 
 const roles = ['client', 'merchant', 'rider'] as const
 type Role = typeof roles[number]
@@ -51,7 +52,11 @@ export default function LoginPage() {
       if (payload.needsProfileCompletion) {
         router.push(`/${role}/profile`)
       } else {
-        router.push(`/${role}/dashboard`)
+        if (role === "client") {
+          router.push(`/${role}/browse`)
+        } else {
+          router.push(`/${role}/dashboard`)
+        }
       }
     } catch (err) {
       console.error('Password login error', err)
@@ -83,7 +88,11 @@ export default function LoginPage() {
       if (payload.needsProfileCompletion) {
         router.push(`/${role}/profile`)
       } else {
-        router.push(`/${role}/dashboard`)
+        if (role === "client") { 
+          router.push(`/${role}/browse`)
+        } else {
+          router.push(`/${role}/dashboard`)
+        }
       }
     } catch (err) {
       console.error('Google OAuth2 login error', err)
@@ -93,13 +102,22 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
-        <div className="flex justify-around mb-6">
+      <div className="max-w-xl w-full bg-white rounded-2xl shadow-xl p-8">
+      <div className="relative flex justify-center items-center mb-4">
+          <button
+            className="absolute left-0 top-2.5 text-blue-600 hover:underline top"
+            onClick={() => router.back()}
+          >
+            ← 返回
+          </button>
+          <h2 className="text-3xl font-extrabold text-indigo-700 tracking-tight">SmartFoodDelivery Login</h2>
+        </div>
+        <div className="flex justify-center gap-1 mb-6">
           {roles.map(r => (
             <button
               key={r}
               onClick={() => setRole(r)}
-              className={`px-4 py-2 font-medium rounded-t-lg ${
+              className={`px-8 py-2 font-medium rounded-t-lg ${
                 role === r ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'
               }`}
             >

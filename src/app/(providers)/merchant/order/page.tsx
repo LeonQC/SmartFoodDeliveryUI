@@ -18,6 +18,7 @@ interface Order {
   riderAssignmentId?: number;   // 骑手派单码
   riderPhone?: string;
   clientPhone: string;         // 下单人手机号
+  payStatus: number;
 }
 
 // Tab 定义
@@ -31,6 +32,15 @@ const TABS = [
 ] as const;
 
 type TabKey = typeof TABS[number][0];
+
+function payStatusText(status: number) {
+  switch (status) {
+    case 0: return "未付款";
+    case 1: return "已付款";
+    case 2: return "已退款";
+    default: return "未知";
+  }
+}
 
 // 计时器：计算剩余确认时间
 function formatRemaining(paidAtIso: string): string {
@@ -84,7 +94,7 @@ export default function MerchantOrdersPage() {
 
   const handleFilter = (key: TabKey, codes: readonly number[]) => {
     setFilter(key);
-    sessionStorage.setItem("currentOrderTab", key);    
+    sessionStorage.setItem("orderCurrentTab", key);    
     fetchOrders([...codes]);
   };
 
@@ -129,15 +139,32 @@ export default function MerchantOrdersPage() {
   };
   const handleView = (id: number) => router.push(`/merchant/order/${id}`);
 
+  const handleRefund = async (orderId: number) => {
+    try {
+      // 这里假设你有后端接口：/merchant/order/{orderId}/refund
+      await apiClient.post(`/merchant/orders/${orderId}/refund`);
+      toast.success('退款申请已提交！');
+      // 操作成功后刷新订单列表
+      const tab = TABS.find(t => t[0] === filter) ?? TABS[0];
+      fetchOrders([...tab[2]]);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.msg || '退款失败');
+    }
+  };  
+
   // 首次加载拉「待接单」
   // 从sessionStorage恢复状态
   useEffect(() => {
-    const savedTab = sessionStorage.getItem("currentOrderTab") as TabKey | null;
+    const savedTab = sessionStorage.getItem("orderCurrentTab") as TabKey | null;
     const initialTab = savedTab ?? "paid";
-    const tab = TABS.find((t) => t[0] === initialTab) ?? TABS[0];
-    setFilter(tab[0]);
-    fetchOrders([...tab[2]]);
+    setFilter(initialTab);
   }, []);
+  
+  useEffect(() => {
+    const tab = TABS.find(t => t[0] === filter) ?? TABS[0];
+    fetchOrders([...tab[2]]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
 
   // 根据 filter 渲染不同表格
   const renderTable = () => {
@@ -255,8 +282,51 @@ export default function MerchantOrdersPage() {
             </tbody>
           </table>
         );
+      case "cancelled":
+        return (
+          <table className="min-w-full bg-white">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="px-4 py-2 border">订单号</th>
+                <th className="px-4 py-2 border">订单菜品</th>
+                <th className="px-4 py-2 border">下单人手机号</th>
+                <th className="px-4 py-2 border">付款时间</th>
+                <th className="px-4 py-2 border">订单金额</th>
+                <th className="px-4 py-2 border">付款状态</th>
+                <th className="px-4 py-2 border">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o) => (
+                <tr key={o.orderId} className="hover:bg-gray-50">
+                  <td className="px-4 py-2 border text-center">{o.orderId}</td>
+                  <td className="px-4 py-2 border text-center">{o.items}</td>
+                  <td className="px-4 py-2 border text-center">{o.clientPhone || "—"}</td>
+                  <td className="px-4 py-2 border text-center">{o.paidAt}</td>
+                  <td className="px-4 py-2 border text-center">$ {o.amount}</td>
+                  <td className="px-4 py-2 border text-center">{payStatusText(o.payStatus)}</td>
+                  <td className="px-4 py-2 border text-center text-sm">
+                    <button onClick={() => handleView(o.orderId)} className="text-blue-600 hover:underline">查看</button>
+                    <button
+                      onClick={() => handleRefund(o.orderId)}
+                      className={
+                        o.payStatus === 1
+                          ? "ml-2 text-red-600 hover:underline"
+                          : "ml-2 text-gray-400 cursor-not-allowed"
+                      }
+                      disabled={o.payStatus !== 1}
+                      style={o.payStatus !== 1 ? { pointerEvents: "none" } : undefined}
+                    >
+                      退款
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );  
       default:
-        // dispatching / completed / cancelled
+        // dispatching / completed
         return (
           <table className="min-w-full bg-white">
             <thead className="bg-gray-100">
@@ -265,7 +335,7 @@ export default function MerchantOrdersPage() {
                 <th className="px-4 py-2 border">订单菜品</th>
                 <th className="px-4 py-2 border">下单人手机号</th>
                 <th className="px-4 py-2 border">骑手联系电话</th>
-                <th className="px-4 py-2 border">下单时间</th>
+                <th className="px-4 py-2 border">付款时间</th>
                 <th className="px-4 py-2 border">实收金额</th>
                 <th className="px-4 py-2 border">操作</th>
               </tr>

@@ -2,17 +2,23 @@ import { configureStore, combineReducers } from '@reduxjs/toolkit'
 import { persistReducer } from 'redux-persist'
 import storage from 'redux-persist/lib/storage'
 import authReducer from './slices/authSlice'
-import cartReducer from './slices/cartSlice'
+import orderReducer from './slices/orderSlice'
+import addressReducer from './slices/addressSlice'
+import merchantReducer from './slices/merchantSlice'
+import merchantWebSocketReucer from './slices/merchantWebSocketSlice'
 
 const rootReducer = combineReducers({
   auth: authReducer,
-  cart: cartReducer,
+  order: orderReducer,
+  address: addressReducer,
+  merchant: merchantReducer,
+  merchantWebSocket: merchantWebSocketReucer
 })
 
 const persistConfig = {
   key: 'root',
   storage,
-  whitelist: ['auth'],
+  whitelist: ['auth', 'merchant', 'address'],
 }
 
 const persistedReducer = persistReducer(persistConfig, rootReducer)

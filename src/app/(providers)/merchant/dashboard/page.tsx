@@ -2,9 +2,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import apiClient from "../../../../services/apiClient";
+import apiClient from "@/services/apiClient";
 import toast from "react-hot-toast";
 import { RejectReasonModal } from "@/components/RejectReasonModal";
+import { useAppSelector } from "@/store/hooks";
 
 interface Order {
   orderId: number;
@@ -15,7 +16,6 @@ interface Order {
   remark?: string;
   status: number;
   eta: string;
-  itemRemarks?: string;
   attemptedAt?: string;
   riderAssignmentId?: number;
   riderPhone?: string;
@@ -29,6 +29,18 @@ export default function MerchantDashboard() {
   const [reason, setReason] = useState("");
   // 用 ref 记录哪些 orderId 已经自动触发过，避免重复请求
   const autoRejectedIds = useRef<Set<number>>(new Set());
+
+  const lastMessage = useAppSelector(state => state.merchantWebSocket.lastMessage);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+    if ('type' in lastMessage && lastMessage.type === "NEW_ORDER") {
+      toast.success("有新订单！");
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance("You have a new order, please handle it!"));
+      fetchDashboardData();
+      fetchOrders(tabStatusMap[filter]);
+    }
+  }, [lastMessage]);
 
   // 打开模态框时重置reason
   const openRejectModal = (orderId: number) => {
@@ -203,7 +215,7 @@ export default function MerchantDashboard() {
   // 2. handleFilter：统一走映射表
   const handleFilter = (type: TabType) => {
     setFilter(type);
-    sessionStorage.setItem("currentOrderTab", type);
+    sessionStorage.setItem("dashboardCurrentTab", type);
 
     // 直接取映射表
     const codes = tabStatusMap[type];
@@ -230,6 +242,7 @@ export default function MerchantDashboard() {
     try{
       const res = await apiClient.post(`/merchant/orders/${currentOrderId}/reject`, { reason });
       toast.success(res.data.msg);
+      fetchOrderMetrics();
       handleFilter("paid");
     } catch (e: any) {
       toast.error(e.response?.data?.msg ?? e.message);
@@ -297,7 +310,7 @@ export default function MerchantDashboard() {
     fetchDashboardData();
 
     // 读出来可能是 null / 也可能是乱写的字符串
-    const saved = sessionStorage.getItem("currentOrderTab");
+    const saved = sessionStorage.getItem("dashboardCurrentTab");
     const allTabs: TabType[] = Object.keys(tabStatusMap) as TabType[];
 
     // 校验一下，只有在白名单里的才用，否则回退到 paid
@@ -344,7 +357,7 @@ export default function MerchantDashboard() {
           </div>
           <div className="grid grid-cols-3 gap-4">
             <OrderStatusCard label="待接单" count={stats.paidCount} />
-            <OrderStatusCard label="待取餐" count={stats.readyToGoCount+stats.pickingUpCount} />
+            <OrderStatusCard label="待取餐" count={stats.pickingUpCount} />
             <OrderStatusCard label="派送中" count={stats.dispatchingCount} />
             <OrderStatusCard label="已完成" count={stats.completedCount} />
             <OrderStatusCard label="已取消" count={stats.cancelledCount} />

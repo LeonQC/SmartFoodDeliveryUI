@@ -13,8 +13,8 @@ const nextConfig: NextConfig = {
         destination: `${apiBase}/profile`,
       },
       {
-        source: '/api/upload',
-        destination: `${apiBase}/upload`,
+        source: '/api/images/:path*',
+        destination: `${apiBase}/images/:path*`,
       },
       {
         source: '/api/:group(client|merchant|rider)/:path*',

@@ -6,8 +6,10 @@ import Image from 'next/image';
 import { Home, Tag, Utensils, ClipboardList, User, ChevronLeft, ChevronRight, BarChart2, LogOut  } from 'lucide-react';
 import apiClient from '../../../services/apiClient';
 import { useDispatch, useSelector } from 'react-redux';
-import { logout as logoutAction, selectUsername,selectNeedsProfileCompletion } from '../../../store/slices/authSlice';
+import { logout as logoutAction, selectUsername,selectNeedsProfileCompletion, selectAuth } from '@/store/slices/authSlice';
 import toast from 'react-hot-toast';
+import { useAppSelector } from '@/store/hooks';
+import { setLastMessage, setIsConnected } from '@/store/slices/merchantWebSocketSlice';
 
 const navItems = [
   { label: 'Dashboard', href: '/merchant/dashboard', icon: Home },
@@ -21,6 +23,7 @@ const navItems = [
 export default function MerchantLayout({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [storeOpen, setStoreOpen] = useState<boolean | null>(null);
+  const auth = useSelector(selectAuth);
   const username = useSelector(selectUsername);
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
@@ -28,6 +31,35 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
   const dispatch = useDispatch();
   const menuRef = useRef<HTMLDivElement>(null);
   const needsProfileCompletion = useSelector(selectNeedsProfileCompletion);
+  const accessToken = auth.accessToken;
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // 建立 websocket 连接
+  useEffect(() => {
+    if (!accessToken) return;
+    if (wsRef.current) return; // 已有 socket，不重复创建
+    const ws = new WebSocket(`ws://localhost:8080/ws/merchant?accessToken=${accessToken}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => dispatch(setIsConnected(true));
+    ws.onmessage = evt => {
+      try {
+        const msg = JSON.parse(evt.data);
+        dispatch(setLastMessage(msg));
+      } catch {
+        dispatch(setLastMessage(evt.data));
+      }
+    };
+    ws.onclose = () => {
+      wsRef.current = null;
+      dispatch(setIsConnected(false));  
+    };
+    return () => {
+      ws.close();
+      wsRef.current = null;
+      dispatch(setIsConnected(false));
+    };
+  }, [accessToken, dispatch]);
 
   // ——【1】路由守卫：资料未完成就跳 profile
   useEffect(() => {
@@ -57,7 +89,8 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
 
     // 只有「既不是从详情页来」也「不是进入详情页」时，才清掉 tab
     if (!wasDetail && !isDetail) {
-      sessionStorage.removeItem("currentOrderTab");
+      sessionStorage.removeItem("dashboardCurrentTab");
+      sessionStorage.removeItem("orderCurrentTab");
     }
     prevPathRef.current = cur;
   }, [pathname]);
@@ -114,6 +147,8 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
       }
     }
     dispatch(logoutAction());
+    wsRef.current?.close();
+    dispatch(setIsConnected(false));
     router.push('/auth/login');
   };
 
@@ -190,7 +225,15 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
                 onClick={() => setMenuOpen(open => !open)}
                 className="flex items-center space-x-2 focus:outline-none"
               >
-                <User size={20} />
+                {auth.image ? (
+                  <img
+                    src={`/api/images?key=${encodeURIComponent(auth.image)}`}
+                    alt="avatar"
+                    className="w-8 h-8 rounded-full object-cover border"
+                  />
+                ) : (
+                  <User size={20} />
+                )}
                 <span className="truncate max-w-xs">{username}</span>
               </button>
 

@@ -28,7 +28,7 @@ export function RejectReasonModal({
         <textarea
           value={reason}
           onChange={(e) => onReasonChange(e.target.value)}
-          placeholder="请输入拒单理由"
+          placeholder="请输入理由"
           className="w-full h-24 border rounded px-3 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
         />
         <div className="flex justify-center space-x-4">

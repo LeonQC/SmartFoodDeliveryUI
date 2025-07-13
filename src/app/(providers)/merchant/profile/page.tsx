@@ -3,6 +3,8 @@ import React, { useState, useEffect, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import apiClient from '../../../../services/apiClient'
 import toast from 'react-hot-toast'
+import { useDispatch } from 'react-redux'
+import { updateImage } from '@/store/slices/authSlice'
 
 interface ProfileForm {
   username: string
@@ -25,6 +27,7 @@ interface ProfileForm {
 
 export default function MerchantProfilePage() {
   const router = useRouter()
+  const dispatch = useDispatch()
   const [form, setForm] = useState<ProfileForm>({
     username: '', email: '', phone: '', address: '', city: '', state: '', country: '',
     merchantName: '', zipcode: '', merchantDescription: '', merchantImage: '', merchantType: '',
@@ -34,6 +37,7 @@ export default function MerchantProfilePage() {
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [logoPreview, setLogoPreview] = useState<string>('')
 
   useEffect(() => {
     async function fetchProfile() {
@@ -92,12 +96,19 @@ export default function MerchantProfilePage() {
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    // 1. 先做本地预览
+    const localUrl = URL.createObjectURL(file)
+    setLogoPreview(localUrl)
+
     setUploading(true)
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await apiClient.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-      setForm(prev => ({ ...prev, merchantImage: res.data.url }))
+      const res = await apiClient.post('/images/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const key = res.data.data.url || ''
+      setForm(prev => ({ ...prev, merchantImage: key }))
+      setTimeout(() => setLogoPreview(''), 2000)
       setError('')
     } catch {
       setError('上传失败')
@@ -112,6 +123,7 @@ export default function MerchantProfilePage() {
     try {
       const payload = { ...form, merchantSocialMedia: form.merchantSocialMedia.join(',') }
       const res = await apiClient.put('/profile', payload)
+      dispatch(updateImage(form.merchantImage))
       router.push('/merchant/dashboard')
       toast.success(res.data.msg)
     } catch {
@@ -130,11 +142,30 @@ export default function MerchantProfilePage() {
         {/* Sidebar */}
         <div className="flex flex-col bg-white shadow rounded h-full"> 
           <div className="bg-white rounded p-6 flex flex-col items-center space-y-4 text-center">
-            {form.merchantImage ? (
-              <img src={form.merchantImage} alt="商户图片" className="w-32 h-32 rounded-full object-cover" />
-            ) : (
-              <div className="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center text-5xl">?</div>
-            )}
+            {/* 先用本地预览，再用后端代理流 */}
+            <div className="relative w-32 h-32">
+              {uploading ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-full">
+                  上传中…
+                </div>
+              ) : logoPreview ? (
+                <img
+                  src={logoPreview}
+                  alt="本地预览"
+                  className="w-32 h-32 rounded-full object-cover"
+                />
+              ) : form.merchantImage ? (
+                <img
+                  src={`/api/images?key=${encodeURIComponent(form.merchantImage)}`}
+                  alt="商户图片"
+                  className="w-32 h-32 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center text-5xl">
+                  ?
+                </div>
+              )}
+            </div>
             <button onClick={() => document.getElementById('logo-input')?.click()} className="px-4 py-2 bg-blue-600 text-white rounded">
               {uploading ? '上传中...' : '更换图片'}
             </button>
@@ -255,6 +286,3 @@ export function Field({ label, children, className = "" }: FieldProps) {
     </div>
   )
 }
-
-
-

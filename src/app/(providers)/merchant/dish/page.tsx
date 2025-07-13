@@ -175,25 +175,58 @@ export default function DishPage() {
     );
   };
 
-  // new modal handlers
+  // 公用的文件上传＋预览逻辑
+  const handleDishImageChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    isNew: boolean
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 1. 本地预览
+    const localUrl = URL.createObjectURL(file);
+    if (isNew) {
+      setNewPreview(localUrl);
+      setNewForm(f => ({ ...f, uploading: true, uploadError: "" }));
+    } else {
+      setEditPreview(localUrl);
+      setEditForm(f => ({ ...f, uploading: true, uploadError: "" }));
+    }
+
+    // 2. 异步上传
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      // 这里假设返回结构 res.data.data.url
+      const res = await apiClient.post(
+        "/images/upload",
+        fd,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      const key = res.data.data.url || "";
+
+      if (isNew) {
+        setNewForm(f => ({ ...f, imageUrl: key, uploading: false }));
+      } else {
+        setEditForm(f => ({ ...f, imageUrl: key, uploading: false }));
+      }
+    } catch {
+      if (isNew) {
+        setNewForm(f => ({ ...f, uploadError: "上传失败", uploading: false }));
+      } else {
+        setEditForm(f => ({ ...f, uploadError: "上传失败", uploading: false }));
+      }
+    }
+  }
+  // 新建菜品 handlers
   const openNew = () => setNewOpen(true);
   const closeNew = () => {
     setNewOpen(false);
     setNewForm({ categoryId: newForm.categoryId, name: "", price: "", description: "", imageUrl: "", uploading: false, uploadError: "" });
     setNewPreview("");
   };
-  const handleNewImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setNewPreview(URL.createObjectURL(file));
-    setNewForm(f => ({ ...f, uploading: true, uploadError: "" }));
-    try {
-      const fd = new FormData(); fd.append('file', file);
-      const r = await apiClient.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setNewForm(f => ({ ...f, imageUrl: r.data.url, uploading: false }));
-    } catch {
-      setNewForm(f => ({ ...f, uploadError: '上传失败', uploading: false }));
-    }
+  const handleNewImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleDishImageChange(e, true);
   };
   const submitNew = async () => {
     if (!newForm.name.trim() || !newForm.price || !newForm.categoryId) {
@@ -210,7 +243,7 @@ export default function DishPage() {
     }
   };
 
-  // edit modal handlers
+  // 编辑菜品 handlers
   const openEdit = (d: Dish) => {
     setEditForm({ dishId: d.dishId, categoryId: d.categoryVO.categoryId, name: d.name, price: d.price.toString(), description: d.description || '', imageUrl: d.image || '', uploading: false, uploadError: '' });
     setEditPreview(d.image || '');
@@ -220,17 +253,8 @@ export default function DishPage() {
     setEditOpen(false);
     setEditPreview('');
   };
-  const handleEditImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    setEditPreview(URL.createObjectURL(file));
-    setEditForm(f => ({ ...f, uploading: true, uploadError: '' }));
-    try {
-      const fd = new FormData(); fd.append('file', file);
-      const r = await apiClient.post('/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setEditForm(f => ({ ...f, imageUrl: r.data.url, uploading: false }));
-    } catch {
-      setEditForm(f => ({ ...f, uploadError: '上传失败', uploading: false }));
-    }
+  const handleEditImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handleDishImageChange(e, false);
   };
   const submitEdit = async () => {
     if (!editForm.name.trim() || !editForm.price || !editForm.categoryId) {
@@ -370,7 +394,7 @@ export default function DishPage() {
                     <td className="px-4 py-2">
                       {d.image ? (
                         <img
-                          src={d.image}
+                          src={`/api/images?key=${encodeURIComponent(d.image)}`}
                           alt={d.name}
                           className="h-12 w-12 object-cover rounded"
                         />
@@ -472,14 +496,24 @@ export default function DishPage() {
                   className="w-full h-full border-2 border-dashed border-gray-300 rounded flex items-center justify-center cursor-pointer"
                   onClick={() => document.getElementById("dishImageInput")?.click()}
                 >
-                  {newPreview ? (
+                  {newForm.uploading ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                      Uploading…
+                    </div>
+                  ) : newPreview ? (
                     <img
                       src={newPreview}
-                      alt="预览"
-                      className="w-full h-full object-cover rounded"
+                      alt="本地预览"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : newForm.imageUrl ? (
+                    <img
+                      src={`/api/images?key=${encodeURIComponent(newForm.imageUrl)}`}
+                      alt="已上传"
+                      className="w-full h-full object-cover"
                     />
                   ) : (
-                    <Plus size={24} className="text-gray-400" />
+                    <Plus size={24} className="text-gray-400 m-auto" />
                   )}
                 </div>
                 {/* 上传失败提示，位于预览框正下方 */}
@@ -578,23 +612,40 @@ export default function DishPage() {
               <h3 className="text-lg font-semibold">编辑菜品</h3>
               <button onClick={closeEdit}><X size={20}/></button>
             </div>
-            {/* 内容同 new modal，但使用 editForm/editPreview/submitEdit */}
+            {/* 表单网格 */}
             <div className="grid grid-cols-3 gap-x-4 gap-y-2 mb-4">
               <div className="row-span-2 col-span-1">
                 <div
                   className="w-full h-full border-2 border-dashed border-gray-300 rounded flex items-center justify-center cursor-pointer"
                   onClick={() => document.getElementById("editImageInput")?.click()}
                 >
-                  {editPreview ? (
-                    <img src={editPreview} alt="预览" className="w-full h-full object-cover rounded" />
+                  {editForm.uploading ? (
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+                      Uploading…
+                    </div>
+                  ) : editPreview ? (
+                    <img
+                      src={editPreview}
+                      alt="本地预览"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : editForm.imageUrl ? (
+                    <img
+                      src={`/api/images?key=${encodeURIComponent(editForm.imageUrl)}`}
+                      alt="已上传"
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
-                    <Plus size={24} className="text-gray-400" />
+                    <Plus size={24} className="text-gray-400 m-auto" />
                   )}
                 </div>
                 {editForm.uploadError && (
-                  <p className="mt-2 text-sm text-red-500 text-center">{editForm.uploadError}</p>
+                  <p className="mt-2 text-sm text-red-500 text-center">
+                    {editForm.uploadError}
+                  </p>
                 )}
               </div>
+              {/* 分类、价格、名称、描述等表单项 */}  
               <div className="col-span-2 row-span-1">
                 <label className="block text-sm font-medium mb-1">分类 <span className="text-red-500">*</span></label>
                 <select
@@ -632,7 +683,7 @@ export default function DishPage() {
                   onChange={e => setEditForm(prev => ({ ...prev, description: e.target.value }))}
                   className="w-full p-2 border rounded h-24"
                 />
-              </div>
+              </div>  
             </div>
             <input
               id="editImageInput"
@@ -647,7 +698,7 @@ export default function DishPage() {
                 <Save size={16} className="mr-2" />{editLoading ? "提交中..." : "提交"}
               </button>
             </div>
-          </div>
+          </div>    
         </div>
       )}
     </>

@@ -1,4 +1,3 @@
-// src/store/authSlice.ts
 import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit'
 import type { RootState } from '../../store'
 
@@ -43,10 +42,14 @@ const authSlice = createSlice({
     setNeedsProfileCompletion(state, action: PayloadAction<boolean>) {
       state.needsProfileCompletion = action.payload
     },
+
+    updateImage(state, action: PayloadAction<string>) {
+      state.image = action.payload;
+    },
   },
 })
 
-export const { login, logout, setNeedsProfileCompletion } = authSlice.actions
+export const { login, logout, setNeedsProfileCompletion, updateImage } = authSlice.actions
 
 // 直接选取整个 auth state
 export const selectAuth = (state: RootState) => state.auth

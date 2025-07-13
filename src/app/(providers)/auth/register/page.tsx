@@ -3,16 +3,19 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import apiClient from '../../../../services/apiClient'
+import toast from 'react-hot-toast'
 
 const roles = ['client', 'merchant', 'rider'] as const
 
 type RegistrationForm = {
+  // 通用字段↓
   username: string
   email: string
   password: string
   phone: string
   gender: string
-  avatar: string         // client/rider 可上传头像
+  // client&rider字段↓
+  avatar: string         
   // merchant字段↓
   address: string
   city: string
@@ -51,9 +54,12 @@ export default function RegisterPage() {
   })
 
   const [error, setError] = useState('')
-  const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
-
+  const [previewAvatar, setPreviewAvatar] = useState('')
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [previewMerchant, setPreviewMerchant] = useState('')
+  const [uploadingMerchant, setUploadingMerchant] = useState(false)
+  
   // ---- 通用 ----
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -69,41 +75,42 @@ export default function RegisterPage() {
       }
     }))
   }
-  // merchant 图片
-  const handleMerchantImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+
+  // 通用文件上传函数
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setUploading(true)
+    // 本地预览
+    const field = e.target.name as 'avatar' | 'merchantImage'
+    const localUrl = URL.createObjectURL(file)
+    // 根据 field 切换不同状态
+    if (field === 'avatar') {
+      setPreviewAvatar(localUrl)
+      setUploadingAvatar(true)
+    } else {
+      setPreviewMerchant(localUrl)
+      setUploadingMerchant(true)
+    }
     try {
       const uploadData = new FormData()
       uploadData.append('file', file)
-      const res = await apiClient.post('/upload', uploadData, {
+      const res = await apiClient.post('/images/upload', uploadData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      const url = res.data?.url || ''
-      setForm(prev => ({ ...prev, merchantImage: url }))
+      const key = res.data.data.url || ''
+      setForm(prev => ({ ...prev, [field]: key }))
+      // 保留本地预览一会儿，再清掉
+      setTimeout(() => {
+        URL.revokeObjectURL(localUrl)
+        if (field === 'avatar') setPreviewAvatar('')
+        else setPreviewMerchant('')
+      }, 1500)
     } catch {
-      setError('Image upload failed')
+      toast.error('上传失败')
+    } finally {
+      if (field === 'avatar') setUploadingAvatar(false)
+      else setUploadingMerchant(false)
     }
-    setUploading(false)
-  }
-  // client/rider 头像
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploading(true)
-    try {
-      const uploadData = new FormData()
-      uploadData.append('file', file)
-      const res = await apiClient.post('/upload', uploadData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      const url = res.data?.url || ''
-      setForm(prev => ({ ...prev, avatar: url }))
-    } catch {
-      setError('Avatar upload failed')
-    }
-    setUploading(false)
   }
   // merchant 动态 Social Media
   const handleSocialMediaChange = (idx: number, value: string) => {
@@ -166,10 +173,10 @@ export default function RegisterPage() {
       }
 
       await apiClient.post('/auth/register', payload)
-      alert('Registration successful.')
+      toast.success('Registration successful.')
       router.push(`/auth/login?role=${role}`)
     } catch (err) {
-      setError('Registration failed. Please check your input.')
+      toast.error('Registration failed. Please check your input.')
     }
     setSaving(false)
   }
@@ -200,6 +207,7 @@ export default function RegisterPage() {
         </div>
         {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-10">
+          {/* 左侧 */}
           {/* 通用字段 */}
           <div className="space-y-5">
             <div>
@@ -241,15 +249,15 @@ export default function RegisterPage() {
                   <label className="block font-semibold mb-1">Zip Code</label>
                   <input type="text" name="zipcode" value={form.zipcode} onChange={handleChange} className="w-full p-3 border rounded-xl" />
                 </div>
+                <div>
+                  <label className="block font-semibold mb-1">Phone <span className="text-red-500">*</span></label>
+                  <input type="text" name="phone" value={form.phone} onChange={handleChange} required className="w-full p-3 border rounded-xl" />
+                </div>
               </>
             )}
           </div>
           {/* 右侧 */}
           <div className="space-y-5">
-            <div>
-              <label className="block font-semibold mb-1">Phone <span className="text-red-500">*</span></label>
-              <input type="text" name="phone" value={form.phone} onChange={handleChange} required className="w-full p-3 border rounded-xl" />
-            </div>
             {/* merchant专属 */}
             {role === 'merchant' && (
               <>
@@ -259,11 +267,29 @@ export default function RegisterPage() {
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Merchant Image</label>
-                  <input type="file" accept="image/*" onChange={handleMerchantImage} className="w-full p-3 border rounded-xl" />
-                  {form.merchantImage && (
-                    <img src={form.merchantImage} alt="preview" className="w-24 h-24 mt-2 rounded-xl object-cover" />
-                  )}
-                  {uploading && <span className="text-gray-500 text-sm">Uploading...</span>}
+                  <input type="file" name="merchantImage" accept="image/*" onChange={handleFileChange} className="w-full p-3 border rounded-xl" />
+                  <div className="mt-2 relative w-24 h-24">
+                    {uploadingMerchant ? (
+                      // 上传中优先级最高
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-xl">
+                        Uploading…
+                      </div>
+                    ) : previewMerchant ? (
+                      // 上传完毕后，如果还保留 previewUrl，则显示本地预览
+                      <img
+                        src={previewMerchant}
+                        alt="local preview"
+                        className="w-24 h-24 rounded-full object-cover"
+                      />
+                    ) : form.merchantImage ? (
+                      // 否则展示后端回显图
+                      <img
+                        src={`/api/images?key=${encodeURIComponent(form.merchantImage)}`}
+                        alt="uploaded"
+                        className="w-24 h-24 rounded-full object-cover"
+                      />
+                    ) : null}
+                  </div>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Description</label>
@@ -325,12 +351,30 @@ export default function RegisterPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Avatar (optional)</label>
-                  <input type="file" accept="image/*" onChange={handleAvatarChange} className="w-full p-3 border rounded-xl" />
-                  {form.avatar && (
-                    <img src={form.avatar} alt="avatar preview" className="w-20 h-20 mt-2 rounded-full object-cover" />
-                  )}
-                  {uploading && <span className="text-gray-500 text-sm">Uploading...</span>}
+                  <label className="block font-semibold mb-1">Avatar </label>
+                  <input type="file" name="avatar" accept="image/*" onChange={handleFileChange} className="w-full p-3 border rounded-xl" />
+                  <div className="mt-2 relative w-24 h-24">
+                    {uploadingAvatar  ? (
+                      // 上传中优先级最高
+                      <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-xl">
+                        Uploading…
+                      </div>
+                    ) : previewAvatar  ? (
+                      // 上传完毕后，如果还保留 previewUrl，则显示本地预览
+                      <img
+                        src={previewAvatar}
+                        alt="local preview"
+                        className="w-20 h-20 rounded-full object-cover"
+                      />
+                    ) : form.avatar ? (
+                      // 否则展示后端回显图
+                      <img
+                        src={`/api/images?key=${encodeURIComponent(form.avatar)}`}
+                        alt="uploaded"
+                        className="w-20 h-20 rounded-full object-cover"
+                      />
+                    ) : null}
+                  </div>
                 </div>
               </>
             )}
